@@ -1,0 +1,15 @@
+services:
+  emby-server:
+    build: .
+    image: emby-server:latest
+    container_name: emby-server
+    ports:
+      - "8096:8096"
+    environment:
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - TMDB_API_KEY=${TMDB_API_KEY:-}
+      - MEDIA_DIRS=${MEDIA_DIRS:-/media}
+    volumes:
+      - ./data:/app/data
+      - ${MEDIA_PATH:-./media}:/media:ro
+    restart: unless-stopped
