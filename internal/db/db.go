@@ -74,7 +74,9 @@ CREATE TABLE IF NOT EXISTS items(
 	height INTEGER NOT NULL DEFAULT 0,
 	vcodec TEXT NOT NULL DEFAULT '',
 	acodec TEXT NOT NULL DEFAULT '',
-	duration REAL NOT NULL DEFAULT 0
+	duration REAL NOT NULL DEFAULT 0,
+	-- strm redirect target (empty for local files)
+	stream_url TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS subtitles(
 	id TEXT PRIMARY KEY,
@@ -99,5 +101,27 @@ CREATE INDEX IF NOT EXISTS idx_items_lib ON items(lib);
 CREATE INDEX IF NOT EXISTS idx_items_parent ON items(parent);
 `
 	_, err := d.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+	// lightweight migrations for existing DBs
+	var hasStreamURL bool
+	rows, err := d.Query(`PRAGMA table_info(items)`)
+	if err == nil {
+		for rows.Next() {
+			var cid int
+			var name, ctype string
+			var notnull, pk int
+			var dflt sql.NullString
+			rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk)
+			if name == "stream_url" {
+				hasStreamURL = true
+			}
+		}
+		rows.Close()
+	}
+	if !hasStreamURL {
+		_, _ = d.Exec(`ALTER TABLE items ADD COLUMN stream_url TEXT NOT NULL DEFAULT ''`)
+	}
+	return nil
 }

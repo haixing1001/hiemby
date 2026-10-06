@@ -18,6 +18,7 @@ import (
 var videoExts = map[string]bool{
 	".mp4": true, ".mkv": true, ".avi": true, ".mov": true,
 	".wmv": true, ".flv": true, ".ts": true, ".m2ts": true,
+	".strm": true, // Kodi/Emby stream redirect file (text containing a URL)
 }
 
 // Scanner holds scan state.
@@ -151,11 +152,23 @@ func (s *Scanner) indexFile(libID, path string, mtime, size int64, full bool) {
 	}
 
 	dir := filepath.Dir(path)
+	ext := strings.ToLower(filepath.Ext(path))
 	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	name := prettify(base)
 
 	it := itemData{ID: id, Lib: libID, Name: name, Kind: "Movie", Path: path,
 		Mtime: mtime, Size: size}
+
+	// .strm: read the target URL, skip ffprobe
+	if ext == ".strm" {
+		if data, err := os.ReadFile(path); err == nil {
+			it.StreamURL = strings.TrimSpace(strings.Split(string(data), "\n")[0])
+		}
+		if it.StreamURL == "" {
+			log.Warn("strm empty: %s", path)
+			return
+		}
+	}
 
 	// NFO
 	if m, err := nfo.ParseMovie(filepath.Join(dir, base+".nfo")); err == nil {
@@ -184,27 +197,29 @@ func (s *Scanner) indexFile(libID, path string, mtime, size int64, full bool) {
 		it.Backdrop = filepath.Join(dir, "backdrop.jpg")
 	}
 
-	// ffprobe media info
-	if mi := s.probe(path); mi != nil {
-		it.Width, it.Height = mi.Width, mi.Height
-		it.VCodec, it.ACodec = mi.VCodec, mi.ACodec
-		it.Duration = mi.Duration
-		if mi.Duration > 0 {
-			it.RuntimeTicks = int64(mi.Duration * 1e7)
+	// ffprobe media info (skip for .strm redirects)
+	if ext != ".strm" {
+		if mi := s.probe(path); mi != nil {
+			it.Width, it.Height = mi.Width, mi.Height
+			it.VCodec, it.ACodec = mi.VCodec, mi.ACodec
+			it.Duration = mi.Duration
+			if mi.Duration > 0 {
+				it.RuntimeTicks = int64(mi.Duration * 1e7)
+			}
 		}
 	}
 
 	_, err = s.db.Exec(`INSERT INTO items(id,lib,parent,name,kind,path,overview,poster,backdrop,year,
-		runtime_ticks,tmdb_id,rating,mtime,size,width,height,vcodec,acodec,duration)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		runtime_ticks,tmdb_id,rating,mtime,size,width,height,vcodec,acodec,duration,stream_url)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(path) DO UPDATE SET name=excluded.name,kind=excluded.kind,overview=excluded.overview,
 		poster=excluded.poster,backdrop=excluded.backdrop,year=excluded.year,runtime_ticks=excluded.runtime_ticks,
 		tmdb_id=excluded.tmdb_id,rating=excluded.rating,mtime=excluded.mtime,size=excluded.size,
 		width=excluded.width,height=excluded.height,vcodec=excluded.vcodec,acodec=excluded.acodec,
-		duration=excluded.duration`,
+		duration=excluded.duration,stream_url=excluded.stream_url`,
 		it.ID, it.Lib, "", it.Name, it.Kind, it.Path, it.Overview, it.Poster, it.Backdrop,
 		it.Year, it.RuntimeTicks, it.TmdbID, it.Rating, it.Mtime, it.Size,
-		it.Width, it.Height, it.VCodec, it.ACodec, it.Duration)
+		it.Width, it.Height, it.VCodec, it.ACodec, it.Duration, it.StreamURL)
 	if err != nil {
 		log.Error("index %s: %v", path, err)
 		return
@@ -220,6 +235,7 @@ func (s *Scanner) indexFile(libID, path string, mtime, size int64, full bool) {
 
 type itemData struct {
 	ID, Lib, Name, Kind, Path, Overview, Poster, Backdrop, TmdbID, VCodec, ACodec string
+	StreamURL                                                                     string
 	Year                                                                          int
 	Rating                                                                        float64
 	Mtime, Size, RuntimeTicks                                                     int64

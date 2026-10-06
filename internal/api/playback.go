@@ -22,10 +22,16 @@ func (s *Server) streamAudio(w http.ResponseWriter, r *http.Request, u authUser)
 
 func (s *Server) serveMedia(w http.ResponseWriter, r *http.Request, u authUser) {
 	id := r.PathValue("id")
-	var path string
-	err := s.db.QueryRow(`SELECT path FROM items WHERE id=?`, id).Scan(&path)
+	var path, streamURL string
+	err := s.db.QueryRow(`SELECT path,stream_url FROM items WHERE id=?`, id).Scan(&path, &streamURL)
 	if err != nil {
 		fail(w, 404, "not found")
+		return
+	}
+	// .strm: redirect straight to the target URL (direct play, no proxy)
+	if streamURL != "" {
+		log.Info("strm redirect %s -> %s", u.Name, streamURL)
+		http.Redirect(w, r, streamURL, http.StatusFound)
 		return
 	}
 	// ?redirect=1 → 302 to a direct file URL (for reverse-proxy setups)
