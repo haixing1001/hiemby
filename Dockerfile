@@ -1,6 +1,6 @@
 # Multi-arch build: amd64 / arm64
 # Stage 1: Go backend
-FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS gobuild
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS gobuild
 ARG TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
