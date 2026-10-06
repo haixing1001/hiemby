@@ -13,15 +13,18 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getUser, clearAuth, isAdmin } from './api.js'
+import { getUser, clearAuth, isAdmin, onAuthChange } from './api.js'
 
 const route = useRoute()
 const router = useRouter()
+// bumped on login/logout so auth-dependent computeds re-evaluate
+const authTick = ref(0)
+onAuthChange(() => authTick.value++)
 const showNav = computed(() => route.path !== '/login')
-const admin = computed(() => isAdmin())
-const userName = computed(() => getUser()?.Name || '')
+const admin = computed(() => { authTick.value; return isAdmin() })
+const userName = computed(() => { authTick.value; return getUser()?.Name || '' })
 
 function logout() {
   clearAuth()

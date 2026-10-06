@@ -17,11 +17,23 @@ export function getUser() {
 export function setAuth(token, user) {
   localStorage.setItem(TOKEN_KEY, token)
   localStorage.setItem(USER_KEY, JSON.stringify(user))
+  emitAuth()
 }
 
 export function clearAuth() {
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
+  emitAuth()
+}
+
+// Reactive auth change notification (localStorage itself is not reactive).
+const authListeners = new Set()
+export function onAuthChange(fn) {
+  authListeners.add(fn)
+  return () => authListeners.delete(fn)
+}
+function emitAuth() {
+  authListeners.forEach((fn) => fn())
 }
 
 export function isAdmin() {
